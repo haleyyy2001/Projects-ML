@@ -1,0 +1,1015 @@
+---
+output:
+  pdf_document: default
+  html_document: default
+---
+```{r}
+# Load necessary libraries and data
+library(survival)
+library(tidyverse)
+library(mice)
+data(lung, package="survival")
+larynx <- lung
+
+# Create description table
+summary(larynx)
+table(larynx$sex)
+table(larynx$age)
+table(larynx$ph.ecog)
+table(larynx$ph.karno)
+table(larynx$pat.karno)
+table(larynx$meal.cal)
+table(larynx$wt.loss)
+
+```
+```{r}
+library(survival)
+library(tidyverse)
+library(mice)
+
+# Load data
+data(lung, package = "survival")
+larynx <- lung
+
+# Create a function to calculate percentage or median based on data type
+percent_or_median <- function(x) {
+  if (is.numeric(x)) {
+    median(x, na.rm = TRUE)
+  } else if (is.logical(x)) {
+    percent_true <- sum(x, na.rm = TRUE) / length(x) * 100
+    paste0(round(percent_true, 2), "%")
+  } else {
+    NA
+  }
+}
+
+# Create description table
+larynx_desc <- larynx %>%
+  summarize_all(percent_or_median) %>%
+  t() %>%
+  as.data.frame(stringsAsFactors = FALSE) %>%
+  setNames("Value") %>%
+  mutate(Variable = rownames(.))
+
+# Print description table
+print(larynx_desc)
+
+```
+```{r}
+library(survival)
+library(tidyverse)
+library(mice)
+
+# Load data
+data(lung, package = "survival")
+larynx <- lung
+
+# Define a function to calculate median and bias
+median_and_bias <- function(x) {
+  median_val <- median(x, na.rm = TRUE)
+  bias_val <- median_val - mean(x, na.rm = TRUE)
+  return(c(median_val, bias_val))
+}
+
+# Define a function to calculate percentage
+percentage <- function(x) {
+  mean_val <- mean(x, na.rm = TRUE)
+  return(mean_val * 100)
+}
+
+# Create a data frame with variables and their descriptions
+desc_table <- data.frame(
+  variable = c("Age", "Sex", "Ph.ecog", "Ph.karno", "Pat.karno", "Meal.cal", 
+               "Wt.loss", "Survival", "Celltype", "Stage", "Rstatus"),
+  description = c("Age in years",
+                  "Sex (male = 1, female = 2)",
+                  "ECOG performance status (0=good 5=dead)",
+                  "Karnofsky performance score (bad=0-good=100)",
+                  "Karnofsky performance score (bad=0-good=100)",
+                  "Calories consumed at each meal",
+                  "Weight loss in last six months",
+                  "Survival time in days",
+                  "Cell type (small cell/large cell)",
+                  "Extent of disease (stage I to IV)",
+                  "Recurrent status (yes=1, no=2)"
+  ),
+  median = apply(larynx[, c("Age", "Ph.ecog", "Ph.karno", "Pat.karno", "Meal.cal", "Wt.loss", "Survival")], 2, median_and_bias),
+  bias = apply(larynx[, c("Age", "Ph.ecog", "Ph.karno", "Pat.karno", "Meal.cal", "Wt.loss", "Survival")], 2, median_and_bias),
+  percentage = apply(larynx[, c("Sex", "Celltype", "Stage", "Rstatus")], 2, percentage)
+)
+
+# Print the description table
+print(desc_table)
+
+```
+
+```{r}
+# Load required packages
+library(survival)
+library(tidyverse)
+library(corrplot)
+# Load data
+data(lung)
+data(cancer, package="survival")
+larynx=lung
+larynx=larynx%>%drop_na()
+
+# Convert variables to required format
+larynx$age <- as.numeric(scale(larynx$age))
+larynx$inst <- as.factor(scale(larynx$inst))
+larynx$sex <- as.factor(scale(larynx$sex))
+larynx$ph_ecog <- as.factor(scale(larynx$ph.ecog))
+larynx$ph_karno <- as.factor(scale(larynx$ph.karno))
+larynx$pat_karno <- as.factor(scale(larynx$pat.karno))
+larynx$meal_cal <- as.numeric(larynx$meal.cal)
+larynx$wt_loss <- as.numeric(larynx$wt.loss)
+
+# Exploratory data analysis
+# Histograms
+ggplot(larynx, aes(x = time)) + geom_histogram()
+ggplot(larynx, aes(x = status)) + geom_histogram()
+
+# Boxplots
+ggplot(larynx, aes(x = sex, y = time)) + geom_boxplot()
+ggplot(larynx, aes(x = inst, y = time)) + geom_boxplot()
+
+# Scatter plot
+ggplot(larynx, aes(x = age, y = time)) + geom_point()
+
+# Correlation plot
+cor_plot <- cor(larynx[, c("time", "status", "age", "meal_cal", "wt_loss")])
+corrplot(cor_plot)
+
+# Survival analysis
+# Kaplan-Meier estimator
+km_fit <- survfit(Surv(time, status) ~ 1, data = larynx)
+plot(km_fit)
+
+```
+
+
+```{r}
+library(tidyverse)
+library(survival)
+data(lung)
+data(cancer, package="survival")
+larynx=lung
+larynx=na.omit(larynx)
+larynx
+library(corrplot)
+library(psych)
+larynx_cont = larynx %>%
+  select_if(is.numeric) %>%
+  na.omit()
+corr_matrix = cor(larynx_cont)
+corrplot(corr_matrix, method = "circle", type = "lower")
+fa_results = fa(larynx_cont, nfactors = 3, rotate = "varimax")
+print(fa_results, sort = TRUE, digits = 2)
+
+covariates <- c("inst","age", "sex",  "ph.karno", "ph.ecog", "wt.loss","pat.karno","meal.cal","wt.loss")
+univ_formulas <- sapply(covariates,
+                        function(x) as.formula(paste('Surv(time, status)~', x)))
+                        
+univ_models <- lapply( univ_formulas, function(x){coxph(x, data = larynx)})
+# Extract data 
+univ_results <- lapply(univ_models,
+                       function(x){ 
+                          x <- summary(x)
+                          p.value<-signif(x$wald["pvalue"], digits=2)
+                          wald.test<-signif(x$wald["test"], digits=2)
+                          beta<-signif(x$coef[1], digits=2);#coeficient beta
+                          HR <-signif(x$coef[2], digits=2);#exp(beta)
+                          HR.confint.lower <- signif(x$conf.int[,"lower .95"], 2)
+                          HR.confint.upper <- signif(x$conf.int[,"upper .95"],2)
+                          HR <- paste0(HR, " (", 
+                                       HR.confint.lower, "-", HR.confint.upper, ")")
+                          res<-c(beta, HR, wald.test, p.value)
+                          names(res)<-c("beta", "HR (95% CI for HR)", "wald.test", 
+                                        "p.value")
+                          return(res)
+                          #return(exp(cbind(coef(x),confint(x))))
+                         })
+```
+```{r}
+res <- t(as.data.frame(univ_results, check.names = FALSE))
+as.data.frame(res)
+res.cox <- coxph(Surv(time, status) ~inst+  ph.karno +pat.karno+age + sex + ph.ecog+inst +  meal.cal + wt.loss, data = larynx)
+summary(res.cox)
+
+```
+```{r}
+###?????
+library(survival)
+
+# Load data
+data(cancer, package="survival")
+larynx <- lung
+
+# Prepare data
+cens <- matrix(c(larynx$time, larynx$status), ncol=2)
+larynx$status <- ifelse(larynx$status==1, 0, 1)
+
+# Impute missing values in inst 33 using the same method as in full_data dataset
+larynx$M <- rbinom(nrow(larynx), prob = exp(1.2-0.1*larynx$pat.karno)/(1+exp(1.2-0.1*larynx$pat.karno)), size = 1)
+larynx$N_obs <- ifelse(larynx$M == 1, larynx$inst33, NA)
+
+# Fit Cox PH model
+coxph_model <- coxph(Surv(time, status) ~ sex + age + ph.ecog + ph.karno + pat.karno + meal.cal + wt.loss, data=larynx)
+
+# Print summary of the model
+summary(coxph_model)
+
+# Calculate hazard ratios and 95% confidence intervals
+exp(cbind(coef(coxph_model), confint(coxph_model)))
+
+# Test the proportional hazards assumption
+cox.zph(coxph_model)
+
+# Plot the survival curves
+library(survminer)
+ggsurvplot(survfit(coxph_model), data=larynx)
+
+```
+
+```{r}
+#partialinstall
+library(survival)
+
+```# Load data
+data(cancer, package="survival")
+larynx <- lung
+
+# Prepare data
+cens <- matrix(c(larynx$time, larynx$status), ncol=2)
+larynx$status <- ifelse(larynx$status==1, 0, 1)
+
+# Fit Cox PH model
+coxph_model <- coxph(Surv(time, status) ~ sex + age + ph.ecog + ph.karno + pat.karno + meal.cal + wt.loss, data=larynx)
+
+# Print summary of the model
+summary(coxph_model)
+
+# Calculate hazard ratios and 95% confidence intervals
+exp(cbind(coef(coxph_model), confint(coxph_model)))
+
+# Test the proportional hazards assumption
+cox.zph(coxph_model)
+
+# Plot the survival curves
+library(survminer)
+ggsurvplot(survfit(coxph_model), data=larynx)
+
+```
+
+```{r}
+library(survival)
+
+# Load data
+data(cancer, package="survival")
+larynx <- lung
+
+# Prepare data for survival analysis
+larynx$time[larynx$status == 1] <- NA # Censored
+is.censored <- as.numeric(is.na(larynx$time))
+drd <- larynx[, c("sex", "ph.ecog", "ph.karno", "wt.loss", "time", "status")]
+drd$sex <- as.factor(drd$sex)
+drd$ph.ecog <- as.numeric(scale(drd$ph.ecog))
+drd$ph.karno <- as.numeric(scale(drd$ph.karno))
+drd$wt.loss <- as.numeric(scale(drd$wt.loss))
+
+# Fit Cox proportional hazards model
+coxph.model <- coxph(Surv(time, status) ~ sex + ph.ecog + ph.karno + wt.loss, data = drd)
+
+# Summarize Cox proportional hazards model
+summary(coxph.model)
+
+# Plot the survival curve
+plot(survfit(coxph.model), main = "Survival Curve", xlab = "Days", ylab = "Survival Probability")
+coxph.model <- coxph(Surv(time, status) ~  sex +  ph.ecog + ph.karno +  wt.loss  ,data= drd)
+summary(coxph.model)
+```
+XXXXXXXXXXXXX
+```{r}
+# Load required packages
+# Load required packages
+library(survival)
+library(tidyverse)
+library(mice)
+
+# Load data
+data(cancer, package="survival")
+larynx <- lung
+
+# Convert variables to required format
+larynx$age <- as.numeric(scale(larynx$age))
+larynx$inst <- as.factor(larynx$inst)
+larynx$sex <- as.factor(scale(larynx$sex))
+larynx$ph_ecog <- as.numeric(scale(larynx$ph.ecog))
+larynx$ph_karno <- as.numeric(scale(larynx$ph.karno))
+larynx$pat_karno <- as.numeric(scale(larynx$pat.karno))
+larynx$meal_cal <- as.numeric(larynx$meal.cal)
+larynx$wt_loss <- as.numeric(larynx$wt.loss)
+larynx$status <- as.factor(larynx$status)
+larynx$time[larynx$status == 1] <- NA # Censored
+
+# Impute missing data for institution 33
+larynx$inst[larynx$inst == 33] <- NA
+mice_imputed <- mice(larynx, m = 5, maxit = 50, method = 'pmm', seed = 500)
+larynx_imputed <- complete(mice_imputed, 1)
+
+# Fit Cox proportional hazards model
+coxph.model <- coxph(Surv(time, status) ~ inst + sex + age + ph_ecog + ph_karno + pat_karno + wt_loss + meal_cal, data = larynx_imputed)
+summary(coxph.model)
+
+```
+
+```{r}
+library(survival)
+library(rms)
+
+# Load data
+data(cancer, package="survival")
+larynx <- lung
+
+# Prepare data for survival analysis
+larynx$time[larynx$status == 1] <- NA # Censored
+is.censored <- as.numeric(is.na(larynx$time))
+drd <- larynx[, c("sex", "ph.ecog", "ph.karno", "wt.loss", "time", "status")]
+drd$sex <- as.factor(drd$sex)
+drd$ph.ecog <- as.numeric(scale(drd$ph.ecog))
+drd$ph.karno <- as.numeric(scale(drd$ph.karno))
+drd$wt.loss <- as.numeric(scale(drd$wt.loss))
+
+
+# Fit a flexible parametric survival model
+fph.model <- psm(Surv(time, status) ~ rcs(ph.ecog, 4) + rcs(ph.karno, 4) + rcs(wt.loss, 4) + sex, data = drd, n.knots = 4)
+
+# Summarize the flexible parametric survival model
+summary(fph.model)
+
+# Plot the survival curve
+plot(Predict(fph.model, fun = survplot), main = "Survival Curve", xlab = "Days", ylab = "Survival Probability")
+
+```
+```{r}
+library(survival)
+library(tidyverse)
+library(mice)
+
+# Load data
+data(lung, package="survival")
+larynx <- lung
+
+# Extract variables of interest
+vars <- c("age", "sex", "ph.ecog", "ph.karno", "pat.karno", "meal.cal", "wt.loss", "status")
+
+# Create function to compute summary statistics
+sum_stats <- function(x) {
+  n_missing <- sum(is.na(x))
+  n_non_missing <- sum(!is.na(x))
+  mean <- mean(x, na.rm = TRUE)
+  sd <- sd(x, na.rm = TRUE)
+  median <- median(x, na.rm = TRUE)
+  q1 <- quantile(x, 0.25, na.rm = TRUE)
+  q3 <- quantile(x, 0.75, na.rm = TRUE)
+  iqr <- q3 - q1
+  max <- max(x, na.rm = TRUE)
+  min <- min(x, na.rm = TRUE)
+  
+  res <- c(n_missing = n_missing, n_non_missing = n_non_missing, mean = mean, 
+           sd = sd, median = median, q1 = q1, q3 = q3, iqr = iqr, max = max, min = min)
+  return(res)
+}
+
+# Compute summary statistics for each variable
+summary_stats <- larynx %>% 
+  select(all_of(vars)) %>% 
+  summarise_all(sum_stats) %>% 
+  t() %>% 
+  as.data.frame() %>% 
+  rename(statistic = V1, age = V2, sex = V3, ph.ecog = V4, ph.karno = V5, pat.karno = V6, 
+         meal.cal = V7, wt.loss = V8, status = V9)
+
+# Add variable names to the table
+var_names <- c("Age (years)", "Sex (0=female, 1=male)", "ECOG performance status", 
+               "Karnofsky performance score (physician)", "Karnofsky performance score (patient)",
+               "Calories/day", "Weight loss (lbs)", "Status (0=censored, 1=event)")
+table_one <- cbind(variable = var_names, summary_stats)
+
+# Print table one
+print(table_one)
+
+```
+
+
+full model
+Here, I first added a column to the dataset indicating missing values for institution 33. Then, I used the mice function to perform multiple imputations for the missing data using predictive mean matching (PMM). Finally, I completed the imputation process and updated the inst column in the original dataset with the imputed values.
+
+After the imputation, I fitted the Cox proportional hazards model as you provided in your code.
+```{r}
+# Load required packages
+library(survival)
+library(tidyverse)
+library(mice)
+
+# Load data
+data(lung, package="survival")
+larynx <- lung
+
+# Add censoring indicator
+larynx$time[larynx$status == 1] <- NA # Censored
+is.censored <- as.numeric(is.na(larynx$time))
+cens <- cbind(larynx$time, is.censored)
+
+# Convert variables to required format
+larynx$age <- as.numeric(scale(larynx$age))
+larynx$inst <- as.factor(larynx$inst)
+larynx$sex <- as.factor(scale(larynx$sex))
+larynx$ph.ecog <- as.numeric(scale(larynx$ph.ecog))
+larynx$ph.karno <- as.numeric(scale(larynx$ph.karno))
+larynx$pat.karno <- as.numeric(scale(larynx$pat.karno))
+larynx$meal.cal <- as.numeric(larynx$meal.cal)
+larynx$wt.loss <- as.numeric(larynx$wt.loss)
+
+# Impute missing data for inst 33
+larynx$inst_missing <- ifelse(larynx$inst == 33, NA, as.numeric(larynx$inst))
+mice_impute <- mice(larynx, m = 5, maxit = 50, method = "pmm", seed = 500)
+larynx_imputed <- complete(mice_impute, 1)
+larynx$inst <- as.factor(larynx_imputed$inst_missing)
+
+# Fit Cox proportional hazards model
+coxph.model <- coxph(Surv(time, status) ~ inst + sex + age + ph.ecog + ph.karno + pat.karno + wt.loss + meal.cal, data = larynx)
+summary(coxph.model)
+X <- model.matrix(~status+ inst+sex+ age+ph.ecog +ph.karno+pat.karno +wt.loss+meal.cal, data =larynx)
+
+cat("model
+    {
+    for (i in 1:n) {
+    is.censored[i]~dinterval(time[i],cens[i,1])
+    time[i]~dweib(alpha,lambda[i])
+    lambda[i]=exp(-mu[i]*alpha)
+    mu[i]=inprod(beta[],X[i,])
+
+    }
+
+    ### Define the priors
+   for(l in 1:Nbetas){beta[l]~dnorm(0,0.001)}
+   alpha ~ dunif(0,10)
+    }", file="aspirinRE2.txt")
+
+
+
+Nbetas = ncol(X)
+Nbetas
+d.jags <- list(n = nrow(larynx), time = larynx$time, cens = cens, X = X, Nbetas = ncol(X))
+#d.jags <- list(n = nrow(larynx), time = larynx$time, cens = cens, X = X, Nbetas = ncol(X), data = X)
+i.jags <- function(){ list(beta = rnorm(ncol(X)), alpha = runif(1)) }
+p.jags <- c("beta", "alpha")
+library("rjags")
+m1 <- jags.model(data=d.jags,  file = "aspirinRE2.txt", inits=i.jags, n.chains=3)
+update(m1, 1000)
+```
+
+```{r}
+
+```
+
+
+
+```{r}
+# Load required packages
+library(survival)
+library(tidyverse)
+
+# Load data
+data(cancer, package="survival")
+larynx=lung
+larynx$time[larynx$status == 1] <- NA # Censored
+is.censored <- as.numeric(is.na(larynx$time))
+cens <- cbind(larynx$time, is.censored)
+
+# Convert variables to required format
+larynx$age <- as.numeric(scale(larynx$age))
+larynx$inst <- as.factor(scale(larynx$inst))
+larynx$sex <- as.factor(scale(larynx$sex))
+larynx$ph_ecog <- as.numeric(scale(larynx$ph.ecog))
+larynx$ph_karno <- as.numeric(scale(larynx$ph.karno))
+larynx$pat_karno <- as.numeric(scale(larynx$pat.karno))
+larynx$meal_cal <- as.numeric(larynx$meal.cal)
+larynx$wt_loss <- as.numeric(larynx$wt.loss)
+X <- model.matrix(~status+ inst+sex+ age+ph.ecog +ph.karno+pat.karno +wt.loss+meal.cal, data =larynx)
+
+# Define JAGS model
+cat( "model {
+  for (i in 1:n) {
+    is.censored[i] ~ dinterval(time[i], cens[i,1])
+    time[i] ~ dweib(alpha, lambda[i])
+    lambda[i] <- exp(-mu[i] * alpha)
+    mu[i] <- inprod(beta[], X[i,])
+  }
+
+  # Define the priors
+  alpha ~ dunif(0,10)
+  for (l in 1:Nbetas) {
+    beta[l] ~ dnorm(0, 0.001)
+  }
+}",file="jags.code.txt" )
+
+# Prepare data for JAGS
+Nbetas <- ncol(X)
+data.list <- list(n = nrow(larynx),
+                  time = larynx$time,
+                  is.censored = is.censored,
+                  cens = cens,
+                  X = X,
+                  Nbetas = Nbetas)
+
+# Set initial values for JAGS
+initss <- function() {
+  list(alpha = runif(1, 0, 10),
+       beta = rnorm(Nbetas, 0, 0.1))
+}
+
+# Compile JAGS model
+library(rjags)
+jags.model <- jags.model(jags.code, data = data.list, inits = inits, n.chains = 3)
+
+# Burn-in and run the model
+update(jags.model, 1000)
+samples <- coda.samples(data=data.list, file="jags.code.txt",inits=initss,variable.names = c("alpha", "beta"), n.iter = 5000)
+
+# Summarize results
+summary(samples)
+plot(samples)
+
+```
+
+
+
+modified model
+```{r}
+library(rjags)
+library(survival)
+
+# Load data
+data(cancer, package="survival")
+larynx <- lung
+
+# Prepare data for JAGS
+drd <- larynx[, c("sex", "ph.ecog", "ph.karno", "wt.loss", "time", "status")]
+drd$time[drd$status == 1] <- NA # Censored
+is.censored <- as.numeric(is.na(drd$time))
+cens <- cbind(drd$time, is.censored)
+drd$sex <- as.factor(drd$sex)
+drd$ph.ecog <- as.numeric(scale(drd$ph.ecog))
+drd$ph.karno <- as.numeric(scale(drd$ph.karno))
+drd$wt.loss <- as.numeric(scale(drd$wt.loss))
+
+# Define JAGS model
+jags.model <- "
+model {
+  # Priors
+  beta0 ~ dnorm(0, 1.0E-6)
+  for (j in 1:p) {
+    beta[j] ~ dnorm(0, 1.0E-6)
+  }
+  sigma ~exp( dnorm(0, 1.0E-6))
+  
+  # Hazard function
+  for (i in 1:n) {
+    lambda[i] <- exp(beta0 + inprod(beta[], X[i,]))
+    S[i, 1] <- 1
+    for (t in 2:T) {
+      S[i, t] <- S[i, t-1] * exp(-lambda[i] * d[t-1])
+    }
+    y[i] ~ dinterval(d[1], T, S[i, ])
+  }
+  
+  # Likelihood for censored observations
+  for (i in 1:n) {
+    if (is.censored[i]) {
+      S[i, T+1] <- S[i, T]
+      cens[i, 2] ~ dbern(S[i, T+1])
+    }
+  }
+}
+"
+
+# Set JAGS parameters
+params <- c("beta0", "beta", "sigma", "lambda")
+
+# Set initial values for JAGS
+p <- ncol(X)
+i.k <-function() {list(beta0 = 0, beta = rep(0, p), sigma=1)}
+
+# Set up data for JAGS
+data.jags <- list(n = nrow(X), T = ncol(cens), X = X, y = cens[, 1], is.censored = is.censored, cens = cens)
+
+# Compile JAGS model
+jags.model <- jags.model(textConnection(jags.model), data = data.jags, n.chains = 3,inits =i.k)
+update(jags.model, 1000)
+
+# Run MCMC simulations
+samples <- coda.samples(jags.model, variable.names = params, n.iter = 5000)
+
+# Summarize posterior distribution
+summary(samples)
+
+```
+modified model 3
+```{r}
+library(survival)
+data(cancer, package="survival")
+
+data(cancer, package="survival")
+larynx=lung
+
+
+ # Survival and censoring times
+aud=larynx
+cens <- matrix(c(larynx$time, rep(NA, length(larynx$time))),nrow = length(larynx$time), ncol = 2)
+larynx$time[larynx$status== 1] <- NA # Censored
+is.censored <- as.numeric(is.na(larynx$time))
+drd=larynx[,c(2,3,5,6,7,10)]
+drd
+#drd$inst <- as.factor((drd$inst))
+drd$sex <- as.factor((drd$sex))
+drd$ph.ecog <-as.numeric(scale(drd$ph.ecog))
+drd$ph.karno <- as.numeric(scale(drd$ph.karno))
+drd$wt.loss<- as.numeric(scale(drd$wt.loss))
+X <- model.matrix(~status+ sex+ ph.ecog +ph.karno +wt.loss, data =drd)
+cat("model
+    {
+    for (i in 1:n) {
+    is.censored[i]~dinterval(time[i],cens[i,1])
+    time[i]~dweib(alpha,lambda[i])
+    lambda[i]=exp(-mu[i]*alpha)
+    mu[i]=inprod(beta[],X[i,])
+
+    }
+
+    ### Define the priors
+   for(l in 1:Nbetas){beta[l]~dnorm(0,0.001)}
+   alpha ~ dunif(0,10)
+    }", file="aspirinRE2.txt")
+
+
+
+Nbetas = ncol(X)
+Nbetas
+d.jags <- list(n = nrow(drd), time = drd$time, cens = cens, X = X, Nbetas = ncol(X))
+i.jags <- function(){ list(beta = rnorm(ncol(X)), alpha = runif(1)) }
+p.jags <- c("beta", "alpha")
+library("rjags")
+m1 <- jags.model(data=d.jags,  file = "aspirinRE2.txt", inits=i.jags, n.chains=3)
+update(m1, 1000)
+```
+
+trial4
+```{r}
+library(rjags)
+library(survival)
+
+# Load data
+data(cancer, package="survival")
+larynx <- lung
+
+# Prepare data for JAGS
+drd <- larynx[, c("sex", "ph.ecog", "ph.karno", "time", "status")]
+drd$time[drd$status == 1] <- NA # Censored
+is.censored <- as.numeric(is.na(drd$time))
+cens <- cbind(drd$time, is.censored)
+drd$sex <- as.factor(drd$sex)
+drd$ph.ecog <- as.numeric(scale(drd$ph.ecog))
+drd$ph.karno <- as.numeric(scale(drd$ph.karno))
+X <- model.matrix(~ sex + ph.ecog + ph.karno, data = drd)
+
+# Define JAGS model
+jags.model <- "
+model {
+  # Priors
+  beta0 ~ dnorm(0, 1.0E-6)
+  for (j in 1:p) {
+    beta[j] ~ dnorm(0, 1.0E-6)
+  }
+  log(sigma) ~ dnorm(0, 1.0E-6)
+  
+  # Hazard function
+  for (i in 1:n) {
+    lambda[i] <- exp(beta0 + inprod(beta[], X[i,]))
+    S[i, 1] <- 1
+    for (t in 2:T) {
+      S[i, t] <- S[i, t-1] * exp(-lambda[i] * d[t-1])
+    }
+    y[i] ~ dinterval(d[1], T, S[i, ])
+  }
+  
+  # Likelihood for censored observations
+  for (i in 1:n) {
+    if (is.censored[i]) {
+      S[i, T+1] <- S[i, T]
+      cens[i, 2] ~ dbern(S[i, T+1])
+    }
+  }
+}
+"
+
+# Set JAGS parameters
+params <- c("beta0", "beta", "sigma", "lambda")
+
+# Set initial values for JAGS
+p <- ncol(X)
+inits <- list(beta0 = 0, beta = rep(0, p), log(sigma) = 0)
+
+# Set up data for JAGS
+data.jags <- list(n = nrow(X), T = ncol(cens), X = X, y = cens[, 1], is.censored = is.censored, cens = cens)
+
+# Compile JAGS model
+jags.model <- jags.model(textConnection(jags.model), data = data.jags, n.chains = 3)
+update(jags.model, 1000)
+
+# Run MCMC simulations
+samples <- coda.samples(jags.model, variable.names = params, n.iter = 5000)
+
+# Summarize posterior distribution
+summary(samples)
+
+```
+
+
+```{r}
+
+
+# Load required packages
+library(survival)
+library(tidyverse)
+
+# Load data
+data(cancer, package="survival")
+larynx=lung
+larynx$time[larynx$status == 1] <- NA # Censored
+is.censored <- as.numeric(is.na(larynx$time))
+cens <- cbind(larynx$time, is.censored)
+# Convert variables to required format
+larynx$age <- as.numeric(scale(larynx$age))
+larynx$inst <- as.factor(scale(larynx$inst))
+larynx$sex <- as.factor(scale(larynx$sex))
+larynx$ph_ecog <- as.numeric(scale(larynx$ph.ecog))
+larynx$ph_karno <- as.numeric(scale(larynx$ph.karno))
+larynx$pat_karno <- as.numeric(scale(larynx$pat.karno))
+larynx$meal_cal <- as.numeric(larynx$meal.cal)
+larynx$wt_loss <- as.numeric(larynx$wt.loss)
+X <- model.matrix(~status+ sex+ age+ph.ecog +ph.karno+pat_karno +wt.loss+meal_cal, data =larynx)
+
+# Define the JAGS model
+cat("model {
+  # Prior distributions
+  beta[1:Nbetas] ~ dmnorm(mu_beta[], Sigma_beta[,])
+  alpha ~ dunif(0,10)
+  sigma ~ dunif(0, 100)
+
+  # Likelihood
+  for (i in 1:n) {
+    is.censored[i] ~ dinterval(time[i], cens[i,1])
+    time[i] ~ dweib(alpha, exp(-mu[i]*alpha))
+    mu[i] <- inprod(beta[], X[i,])
+  }
+  
+  # Priors for hyperparameters
+  mu_beta[1:Nbetas] ~ dnorm(0, 1.0E-6)
+  Sigma_beta[1:Nbetas, 1:Nbetas] ~ dwish(R, nu)
+}", file="model.txt")
+
+# Data and initial values
+list_data=list(
+  n = nrow(larynx),
+  Nbetas = ncol(X),
+  time = larynx$time,
+  is.censored = is.censored,
+  cens = cens,
+  X = X
+)
+i.jags <- function(){ list(
+  R = diag(Nbetas),
+  nu = Nbetas + 2,
+  mu_beta = rep(0, Nbetas),
+  Sigma_beta = diag(Nbetas),
+  sigma = 1,
+  alpha = 1)}
+# Compile the JAGS model
+library(rjags)
+jags_model <- jags.model("model.txt", data = list_data,init=j.jags, n.chains = 3)
+
+# Burn-in and update the model
+update(jags_model, 1000)
+
+# Run the MCMC chains and collect the samples
+samples <- coda.samples(jags_model, variable.names = c("beta", "alpha", "sigma"), n.iter = 10000)
+
+
+```
+
+
+
+
+
+```{r}
+library(rjags)
+library(survival)
+
+# Load data
+data(cancer, package="survival")
+larynx <- lung
+
+# Prepare data for JAGS
+aud <- larynx
+drd <- larynx[, c(2, 3, 5, 6, 7, 10)]
+drd$time[drd$status == 1] <- NA # Censored
+is.censored <- as.numeric(is.na(drd$time))
+cens <- cbind(drd$time, is.censored)
+drd$sex <- as.factor(drd$sex)
+drd$ph.ecog <- as.numeric(scale(drd$ph.ecog))
+drd$ph.karno <- as.numeric(scale(drd$ph.karno))
+drd$wt.loss <- as.numeric(scale(drd$wt.loss))
+X <- model.matrix(~status + sex + ph.ecog + ph.karno + wt.loss, data=drd)
+
+# Define JAGS model
+p <- ncol(X)
+jags.model <- "
+model {
+  # Priors
+  beta0 ~ dnorm(0, 1.0E-6)
+  for (j in 1:p) {
+    beta[j] ~ dnorm(0, 1.0E-6)
+  }
+  log(sigma) ~ dnorm(0, 1.0E-6)
+  
+  # Hazard function
+  for (i in 1:n) {
+    lambda[i] <- exp(beta0 + inprod(beta[], X[i,]))
+    S[i, 1] <- 1
+    for (t in 2:T) {
+      S[i, t] <- S[i, t-1] * exp(-lambda[i] * d[t-1])
+    }
+    y[i] ~ dinterval(d[1], T, S[i, ])
+  }
+  
+  # Likelihood for censored observations
+  for (i in 1:n) {
+    if (is.censored[i]) {
+      S[i, T+1] <- S[i, T]
+      cens[i, 2] ~ dbern(S[i, T+1])
+    }
+  }
+}
+"
+
+# Set JAGS parameters
+params <- c("beta0", "beta", "sigma", "lambda")
+
+# Set initial values for JAGS
+inits <- list(beta0 = 0, beta = rep(0, p), log(sigma) = 0)
+
+# Set up data for JAGS
+data.jags <- list(n = nrow(X), T = ncol(cens), X = X, y = cens[, 1], is.censored = is.censored, cens = cens)
+
+# Compile JAGS model
+jags.model <- jags.model(textConnection(jags.model), data = data.jags, n.chains = 3)
+update(jags.model, 1000)
+
+# Run MCMC simulations
+samples <- coda.samples(jags.model, variable.names = params, n.iter = 5000)
+
+#
+
+```
+```{r}
+library(rjags)
+library(survival)
+
+# Load data
+data(cancer, package="survival")
+larynx <- lung
+
+# Prepare data for JAGS
+aud <- larynx
+drd <- larynx[, c(2, 3, 5, 6, 7, 10)]
+drd$time[drd$status == 1] <- NA # Censored
+is.censored <- as.numeric(is.na(drd$time))
+cens <- cbind(drd$time, is.censored)
+drd$sex <- as.factor(drd$sex)
+drd$ph.ecog <- as.numeric(scale(drd$ph.ecog))
+drd$ph.karno <- as.numeric(scale(drd$ph.karno))
+drd$wt.loss <- as.numeric(scale(drd$wt.loss))
+X <- model.matrix(~sex + ph.ecog + ph.karno + wt.loss, data = drd)
+
+# Define JAGS model
+jags.model <- "
+model {
+  # Priors
+  beta0 ~ dnorm(0, 1.0E-6)
+  for (j in 1:p) {
+    beta[j] ~ dnorm(0, 1.0E-6)
+  }
+  log(sigma) ~ dnorm(0, 1.0E-6)
+  
+  # Hazard function
+  for (i in 1:n) {
+    lambda[i] <- exp(beta0 + inprod(beta[], X[i,]))
+    S[i, 1] <- 1
+    for (t in 2:T) {
+      S[i, t] <- S[i, t-1] * exp(-lambda[i] * d[t-1])
+    }
+    y[i] ~ dinterval(d[1], T, S[i, ])
+  }
+  
+  # Likelihood for censored observations
+  for (i in 1:n) {
+    if (is.censored[i]) {
+      S[i, T+1] <- S[i, T]
+      cens[i, 2] ~ dbern(S[i, T+1])
+    }
+  }
+}
+"
+
+# Set JAGS parameters
+params <- c("beta0", "beta", "sigma", "lambda")
+
+# Set initial values for JAGS
+p <- ncol(X)
+inits <- function(){list(beta0 = 0, beta = rep(0, p), log(sigma) = 0)}
+
+# Set up data for JAGS
+data.jags <- list(n = nrow(X), T = ncol(cens), X = X, y = cens[, 1], is.censored = is.censored, cens = cens)
+
+# Compile JAGS model
+jags.model <- jags.model(textConnection(jags.model), data = data.jags, n.chains = 3)
+update(jags.model, 1000)
+
+# Run MCMC simulations
+samples <- coda.samples(jags.model, variable.names = params, n.iter = 5000)
+
+# Summarize posterior distribution
+summary(samples)
+
+```
+```{r}
+library(survival)
+library(rjags)
+
+# Load data
+data(cancer, package = "survival")
+lung <- lung[, c("time", "status", "sex", "ph.ecog", "ph.karno")]
+
+# Prepare data for JAGS
+lung$time[lung$status == 1] <- NA # Censored
+is.censored <- as.numeric(is.na(lung$time))
+cens <- cbind(lung$time, is.censored)
+lung$sex <- as.numeric(lung$sex == "M")
+lung$ph.ecog <- as.numeric(scale(lung$ph.ecog))
+lung$ph.karno <- as.numeric(scale(lung$ph.karno))
+X <- model.matrix(~ sex + ph.ecog + ph.karno, data = lung)
+
+# Define JAGS model
+jags.model <- "
+model {
+  # Priors
+  beta0 ~ dnorm(0, 1.0E-6)
+  for (j in 1:p) {
+    beta[j] ~ dnorm(0, 1.0E-6)
+  }
+  log(sigma) ~ dnorm(0, 1.0E-6)
+
+  # Hazard function
+  for (i in 1:n) {
+    lambda[i] <- exp(beta0 + inprod(beta[], X[i, ]))
+    S[i, 1] <- 1
+    for (t in 2:T) {
+      S[i, t] <- S[i, t - 1] * exp(-lambda[i] * d[t - 1])
+    }
+    y[i] ~ dinterval(d[1], T, S[i, ])
+  }
+
+  # Likelihood for censored observations
+  for (i in 1:n) {
+    if (is.censored[i]) {
+      S[i, T + 1] <- S[i, T]
+      cens[i, 2] ~ dbern(S[i, T + 1])
+    }
+  }
+}
+"
+
+# Set JAGS parameters
+params <- c("beta0", "beta", "sigma", "lambda")
+
+# Set initial values for JAGS
+inits <- list(beta0 = 0, beta = rep(0, p), log(sigma) = 0)
+
+# Set up data for JAGS
+data.jags <- list(n = nrow(X), T = ncol(cens), X = X, y = cens[, 1], is.censored = is.censored, cens = cens)
+
+
+```
+
